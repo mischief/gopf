@@ -174,6 +174,11 @@ type Anchor interface {
 type Stats interface {
 	// Enabled returns true if the firewall is enabled, otherwise false.
 	Enabled() bool
+
+	StateCount() int
+	StateSearches() int
+	StateInserts() int
+	StateRemovals() int
 }
 
 // Pf is a handle to the firewall loaded in the kernel.
