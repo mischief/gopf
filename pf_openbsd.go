@@ -339,6 +339,36 @@ func (s *OpenStats) StateRemovals() int {
 	return int(s.s.fcounters[2])
 }
 
+func (s *OpenStats) IfStats() *IfStats {
+	ifname := C.GoStringN(&s.s.ifname[0], C.IFNAMSIZ)
+
+	if len(ifname) == 0 {
+		return nil
+	}
+
+	ifstats := &IfStats{
+		Name: ifname,
+		IPv4: IPStats{
+			BytesIn:  uint64(s.s.bcounters[0][0]),
+			BytesOut: uint64(s.s.bcounters[0][1]),
+			PacketsInPassed: uint64(s.s.pcounters[0][0][PF_PASS]),
+			PacketsInBlocked: uint64(s.s.pcounters[0][0][PF_BLOCK]),
+			PacketsOutPassed: uint64(s.s.pcounters[0][1][PF_PASS]),
+			PacketsOutBlocked: uint64(s.s.pcounters[0][1][PF_BLOCK]),
+		},
+		IPv6: IPStats{
+			BytesIn:  uint64(s.s.bcounters[1][0]),
+			BytesOut: uint64(s.s.bcounters[1][1]),
+			PacketsInPassed: uint64(s.s.pcounters[1][0][PF_PASS]),
+			PacketsInBlocked: uint64(s.s.pcounters[1][0][PF_BLOCK]),
+			PacketsOutPassed: uint64(s.s.pcounters[1][1][PF_PASS]),
+			PacketsOutBlocked: uint64(s.s.pcounters[1][1][PF_BLOCK]),
+		},
+	}
+
+	return ifstats
+}
+
 func (p *OpenPf) Stats() (Stats, error) {
 	stats := C.struct_pf_status{}
 
