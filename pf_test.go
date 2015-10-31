@@ -20,7 +20,17 @@ func TestPfStats(t *testing.T) {
 	}
 	defer pf.Close()
 
-	pf.Stats()
+	stats, err := pf.Stats()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ifstats := stats.IfStats()
+	if ifstats == nil {
+		t.Log("no ifstats")
+	} else {
+		t.Logf("ifstats: %+v", ifstats)
+	}
 }
 
 func TestPfAnchors(t *testing.T) {

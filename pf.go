@@ -40,9 +40,9 @@ func (d Direction) String() string {
 }
 
 const (
-	Block Action = iota
-	Pass
-	Match
+	Block Action = PF_BLOCK
+	Pass = PF_PASS
+	Match = PF_MATCH
 )
 
 const (
@@ -170,6 +170,22 @@ type Anchor interface {
 	DeleteIndex(nr int) error
 }
 
+// IfStats provides information about the pf loginterface.
+type IfStats struct {
+	Name string
+	IPv4 IPStats
+	IPv6 IPStats
+}
+
+type IPStats struct {
+	BytesIn           uint64
+	BytesOut          uint64
+	PacketsInPassed   uint64
+	PacketsInBlocked  uint64
+	PacketsOutPassed  uint64
+	PacketsOutBlocked uint64
+}
+
 // Stats gives statistical information about the firewall.
 type Stats interface {
 	// Enabled returns true if the firewall is enabled, otherwise false.
@@ -179,6 +195,10 @@ type Stats interface {
 	StateSearches() int
 	StateInserts() int
 	StateRemovals() int
+
+	// IfStats returns statistics from the pf loginterface.
+	// If the loginterface is unset, IfStats returns nil.
+	IfStats() *IfStats
 }
 
 // Pf is a handle to the firewall loaded in the kernel.
