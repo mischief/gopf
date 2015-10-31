@@ -1,17 +1,18 @@
 package pf
 
 /*
+#include <sys/types.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/fcntl.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <net/pfvar.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <sys/fcntl.h>
-#include <net/if.h>
-#include <net/pfvar.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 
 int
 unmask(struct pf_addr_wrap *a)
@@ -320,6 +321,22 @@ type OpenStats struct {
 
 func (s *OpenStats) Enabled() bool {
 	return s.s.running != 0
+}
+
+func (s *OpenStats) StateCount() int {
+	return int(s.s.states)
+}
+
+func (s *OpenStats) StateSearches() int {
+	return int(s.s.fcounters[0])
+}
+
+func (s *OpenStats) StateInserts() int {
+	return int(s.s.fcounters[1])
+}
+
+func (s *OpenStats) StateRemovals() int {
+	return int(s.s.fcounters[2])
 }
 
 func (p *OpenPf) Stats() (Stats, error) {
