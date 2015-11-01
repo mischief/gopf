@@ -9,6 +9,7 @@ package pf
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <net/pfvar.h>
+#include <net/hfsc.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -139,6 +140,9 @@ const (
 	DIOCXBEGIN      = C.DIOCXBEGIN
 	DIOCXCOMMIT     = C.DIOCXCOMMIT
 	DIOCCHANGERULE  = C.DIOCCHANGERULE
+	DIOCGETQUEUES   = C.DIOCGETQUEUES
+	DIOCGETQUEUE    = C.DIOCGETQUEUE
+	DIOCGETQSTATS   = C.DIOCGETQSTATS
 
 	/* DIOCCHANGERULE actions */
 	PF_CHANGE_ADD_TAIL   = C.PF_CHANGE_ADD_TAIL
@@ -349,19 +353,19 @@ func (s *OpenStats) IfStats() *IfStats {
 	ifstats := &IfStats{
 		Name: ifname,
 		IPv4: IPStats{
-			BytesIn:  uint64(s.s.bcounters[0][0]),
-			BytesOut: uint64(s.s.bcounters[0][1]),
-			PacketsInPassed: uint64(s.s.pcounters[0][0][PF_PASS]),
-			PacketsInBlocked: uint64(s.s.pcounters[0][0][PF_BLOCK]),
-			PacketsOutPassed: uint64(s.s.pcounters[0][1][PF_PASS]),
+			BytesIn:           uint64(s.s.bcounters[0][0]),
+			BytesOut:          uint64(s.s.bcounters[0][1]),
+			PacketsInPassed:   uint64(s.s.pcounters[0][0][PF_PASS]),
+			PacketsInBlocked:  uint64(s.s.pcounters[0][0][PF_BLOCK]),
+			PacketsOutPassed:  uint64(s.s.pcounters[0][1][PF_PASS]),
 			PacketsOutBlocked: uint64(s.s.pcounters[0][1][PF_BLOCK]),
 		},
 		IPv6: IPStats{
-			BytesIn:  uint64(s.s.bcounters[1][0]),
-			BytesOut: uint64(s.s.bcounters[1][1]),
-			PacketsInPassed: uint64(s.s.pcounters[1][0][PF_PASS]),
-			PacketsInBlocked: uint64(s.s.pcounters[1][0][PF_BLOCK]),
-			PacketsOutPassed: uint64(s.s.pcounters[1][1][PF_PASS]),
+			BytesIn:           uint64(s.s.bcounters[1][0]),
+			BytesOut:          uint64(s.s.bcounters[1][1]),
+			PacketsInPassed:   uint64(s.s.pcounters[1][0][PF_PASS]),
+			PacketsInBlocked:  uint64(s.s.pcounters[1][0][PF_BLOCK]),
+			PacketsOutPassed:  uint64(s.s.pcounters[1][1][PF_PASS]),
 			PacketsOutBlocked: uint64(s.s.pcounters[1][1][PF_BLOCK]),
 		},
 	}
@@ -438,4 +442,76 @@ func (p *OpenPf) Anchor(anchor string) (Anchor, error) {
 	}
 
 	return nil, fmt.Errorf("no such anchor %q", anchor)
+}
+
+// Queues returns all queues in pf.
+func (p *OpenPf) Queues() ([]Queue, error) {
+	pq := &C.struct_pfioc_queue{}
+	pqs := &C.struct_pfioc_qstats{}
+	hfscstats := &C.struct_hfsc_class_stats{}
+
+	err := ioctl(p.fd.Fd(), DIOCGETQUEUES, uintptr(unsafe.Pointer(pq)))
+	if err != nil {
+		return nil, err
+	}
+
+	queues := make([]Queue, 0)
+
+	n := int(pq.nr)
+
+	for i := 0; i < n; i++ {
+		pqs.nr = C.u_int32_t(i)
+		pqs.ticket = pq.ticket
+		pqs.buf = unsafe.Pointer(hfscstats)
+		pqs.nbytes = C.int(unsafe.Sizeof(C.struct_hfsc_class_stats{}))
+
+		err := ioctl(p.fd.Fd(), DIOCGETQSTATS, uintptr(unsafe.Pointer(pqs)))
+		if err != nil {
+			return nil, err
+		}
+
+		qname := C.GoStringN(&pqs.queue.qname[0], C.PF_QNAME_SIZE)
+		if qname[0] == '_' {
+			continue
+		}
+
+		qparent := C.GoStringN(&pqs.queue.parent[0], C.PF_QNAME_SIZE)
+		qifname := C.GoStringN(&pqs.queue.ifname[0], C.IFNAMSIZ)
+
+		queue := Queue{
+			Name:   qname,
+			Parent: qparent,
+			IfName: qifname,
+			Stats: QueueStats{
+				TransmitPackets: uint64(hfscstats.xmit_cnt.packets),
+				TransmitBytes:   uint64(hfscstats.xmit_cnt.bytes),
+				DroppedPackets:  uint64(hfscstats.drop_cnt.packets),
+				DroppedBytes:    uint64(hfscstats.drop_cnt.bytes),
+			},
+		}
+
+		queues = append(queues, queue)
+	}
+
+	return queues, nil
+}
+
+// Queue gets a queue by name.
+func (p *OpenPf) Queue(queue string) (*Queue, error) {
+	if queue == "" {
+		return nil, fmt.Errorf("empty queue name")
+	}
+
+	queues, err := p.Queues()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, q := range queues {
+		if q.Name == queue {
+			return &q, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no such queue %q", queue)
 }

@@ -41,8 +41,8 @@ func (d Direction) String() string {
 
 const (
 	Block Action = PF_BLOCK
-	Pass = PF_PASS
-	Match = PF_MATCH
+	Pass         = PF_PASS
+	Match        = PF_MATCH
 )
 
 const (
@@ -170,6 +170,22 @@ type Anchor interface {
 	DeleteIndex(nr int) error
 }
 
+// QueueStats holds stats from a queue.
+type QueueStats struct {
+	TransmitBytes   uint64
+	TransmitPackets uint64
+	DroppedBytes    uint64
+	DroppedPackets  uint64
+}
+
+// Queue is a snapshot of a pf queue.
+type Queue struct {
+	Name   string
+	Parent string
+	IfName string
+	Stats  QueueStats
+}
+
 // IfStats provides information about the pf loginterface.
 type IfStats struct {
 	Name string
@@ -206,5 +222,6 @@ type Pf interface {
 	Stats() (Stats, error)
 	Anchors() ([]string, error)
 	Anchor(anchor string) (Anchor, error)
+	Queues() ([]Queue, error)
 	Close() error
 }

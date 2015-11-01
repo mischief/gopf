@@ -50,6 +50,23 @@ func TestPfAnchors(t *testing.T) {
 	}
 }
 
+func TestPfQueues(t *testing.T) {
+	pf, err := Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pf.Close()
+
+	queues, err := pf.Queues()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, a := range queues {
+		t.Logf("queue: %+v", a)
+	}
+}
+
 func TestPfInsertDelete(t *testing.T) {
 	pf, err := Open()
 	if err != nil {
