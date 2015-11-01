@@ -344,7 +344,7 @@ func (s *OpenStats) StateRemovals() int {
 }
 
 func (s *OpenStats) IfStats() *IfStats {
-	ifname := C.GoStringN(&s.s.ifname[0], C.IFNAMSIZ)
+	ifname := C.GoString(&s.s.ifname[0])
 
 	if len(ifname) == 0 {
 		return nil
@@ -470,13 +470,13 @@ func (p *OpenPf) Queues() ([]Queue, error) {
 			return nil, err
 		}
 
-		qname := C.GoStringN(&pqs.queue.qname[0], C.PF_QNAME_SIZE)
+		qname := C.GoString(&pqs.queue.qname[0])
 		if qname[0] == '_' {
 			continue
 		}
 
-		qparent := C.GoStringN(&pqs.queue.parent[0], C.PF_QNAME_SIZE)
-		qifname := C.GoStringN(&pqs.queue.ifname[0], C.IFNAMSIZ)
+		qparent := C.GoString(&pqs.queue.parent[0])
+		qifname := C.GoString(&pqs.queue.ifname[0])
 
 		queue := Queue{
 			Name:   qname,
