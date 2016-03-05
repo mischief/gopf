@@ -302,6 +302,10 @@ type OpenPf struct {
 	fd *os.File
 }
 
+func OpenFD(fd uintptr) Pf {
+	return &OpenPf{fd: os.NewFile(fd, "pf")}
+}
+
 func Open() (Pf, error) {
 	pf := new(OpenPf)
 
