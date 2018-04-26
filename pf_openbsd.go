@@ -10,6 +10,7 @@ package pf
 #include <netinet/ip.h>
 #include <net/pfvar.h>
 #include <net/hfsc.h>
+#include <arpa/inet.h>
 
 #include <stdio.h>
 #include <stdlib.h>
