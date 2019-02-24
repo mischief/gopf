@@ -9,7 +9,6 @@ package pf
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <net/pfvar.h>
-#include <net/hfsc.h>
 #include <arpa/inet.h>
 
 #include <stdio.h>
@@ -129,8 +128,6 @@ import (
 const (
 	PF_RESERVED_ANCHOR = C.PF_RESERVED_ANCHOR
 
-	PF_TRANS_RULESET = C.PF_TRANS_RULESET
-
 	/* ioctls */
 	DIOCADDRULE     = C.DIOCADDRULE
 	DIOCGETRULES    = C.DIOCGETRULES
@@ -141,8 +138,6 @@ const (
 	DIOCXBEGIN      = C.DIOCXBEGIN
 	DIOCXCOMMIT     = C.DIOCXCOMMIT
 	DIOCCHANGERULE  = C.DIOCCHANGERULE
-	DIOCGETQUEUES   = C.DIOCGETQUEUES
-	DIOCGETQUEUE    = C.DIOCGETQUEUE
 	DIOCGETQSTATS   = C.DIOCGETQSTATS
 
 	/* DIOCCHANGERULE actions */
@@ -154,26 +149,21 @@ const (
 	PF_INOUT = C.PF_INOUT
 	PF_IN    = C.PF_IN
 	PF_OUT   = C.PF_OUT
-	PF_FWD   = C.PF_FWD
 
 	/* rule actions */
 	PF_PASS  = C.PF_PASS
 	PF_BLOCK = C.PF_DROP
-	PF_MATCH = C.PF_MATCH
 	PF_RDR   = C.PF_RDR
 
 	/* address types */
 	PF_ADDR_ADDRMASK = C.PF_ADDR_ADDRMASK
 	PF_ADDR_DYNIFTL  = C.PF_ADDR_DYNIFTL
-	PF_ADDR_NONE     = C.PF_ADDR_NONE
 
 	/* keep state types */
 	PF_STATE_NORMAL = C.PF_STATE_NORMAL
 
 	/* port operations */
 	PF_OP_EQ = C.PF_OP_EQ
-
-	Match = PF_MATCH
 )
 
 var (
@@ -191,18 +181,12 @@ var (
 	}
 )
 
-const (
-	Match	    = PF_MATCH
-)
-
 func (a Action) String() string {
 	switch a {
 	case Block:
 		return "block"
 	case Pass:
 		return "pass"
-	case Match:
-		return "match"
 	}
 
 	panic("unknown action")
@@ -276,19 +260,19 @@ func pfaddrtogoaddr(w *C.struct_pf_addr_wrap, a Addr) {
 	}
 }
 
-type OpenRule struct {
+type FreeRule struct {
 	r C.struct_pf_rule
 }
 
-func (r *OpenRule) Nr() uint {
+func (r *FreeRule) Nr() uint {
 	return uint(r.r.nr)
 }
 
-func (r OpenRule) IfName() string {
+func (r FreeRule) IfName() string {
 	return C.GoString(&r.r.ifname[0])
 }
 
-func (r OpenRule) string() string {
+func (r FreeRule) string() string {
 	action := actiontypes[r.r.action]
 
 	rs := action
@@ -318,16 +302,16 @@ func (r OpenRule) string() string {
 	return rs
 }
 
-type OpenPf struct {
+type FreePf struct {
 	fd *os.File
 }
 
 func OpenFD(fd uintptr) Pf {
-	return &OpenPf{fd: os.NewFile(fd, "pf")}
+	return &FreePf{fd: os.NewFile(fd, "pf")}
 }
 
 func Open() (Pf, error) {
-	pf := new(OpenPf)
+	pf := new(FreePf)
 
 	fd, err := os.OpenFile("/dev/pf", os.O_RDWR, 0)
 	if err != nil {
@@ -339,35 +323,35 @@ func Open() (Pf, error) {
 	return pf, nil
 }
 
-func (p *OpenPf) Close() error {
+func (p *FreePf) Close() error {
 	return p.fd.Close()
 }
 
-type OpenStats struct {
+type FreeStats struct {
 	s C.struct_pf_status
 }
 
-func (s *OpenStats) Enabled() bool {
+func (s *FreeStats) Enabled() bool {
 	return s.s.running != 0
 }
 
-func (s *OpenStats) StateCount() int {
+func (s *FreeStats) StateCount() int {
 	return int(s.s.states)
 }
 
-func (s *OpenStats) StateSearches() int {
+func (s *FreeStats) StateSearches() int {
 	return int(s.s.fcounters[0])
 }
 
-func (s *OpenStats) StateInserts() int {
+func (s *FreeStats) StateInserts() int {
 	return int(s.s.fcounters[1])
 }
 
-func (s *OpenStats) StateRemovals() int {
+func (s *FreeStats) StateRemovals() int {
 	return int(s.s.fcounters[2])
 }
 
-func (s *OpenStats) IfStats() *IfStats {
+func (s *FreeStats) IfStats() *IfStats {
 	ifname := C.GoString(&s.s.ifname[0])
 
 	if len(ifname) == 0 {
@@ -397,7 +381,7 @@ func (s *OpenStats) IfStats() *IfStats {
 	return ifstats
 }
 
-func (p *OpenPf) Stats() (Stats, error) {
+func (p *FreePf) Stats() (Stats, error) {
 	stats := C.struct_pf_status{}
 
 	err := ioctl(p.fd.Fd(), DIOCGETSTATUS, uintptr(unsafe.Pointer(&stats)))
@@ -405,10 +389,10 @@ func (p *OpenPf) Stats() (Stats, error) {
 		return nil, err
 	}
 
-	return &OpenStats{s: stats}, nil
+	return &FreeStats{s: stats}, nil
 }
 
-func (p *OpenPf) Anchors() ([]string, error) {
+func (p *FreePf) Anchors() ([]string, error) {
 	pr := &C.struct_pfioc_ruleset{}
 
 	err := ioctl(p.fd.Fd(), DIOCGETRULESETS, uintptr(unsafe.Pointer(pr)))
@@ -448,80 +432,17 @@ func (p *OpenPf) Anchors() ([]string, error) {
 	return anchors, nil
 }
 
-func (p *OpenPf) Anchor(anchor string) (Anchor, error) {
-	/* the empty anchor is ok, it's the root ruleset. */
-	if anchor == "" {
-		return &OpenAnchor{pf: p}, nil
-	}
-
-	anchors, err := p.Anchors()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, a := range anchors {
-		if a == anchor {
-			return &OpenAnchor{name: a, pf: p}, nil
-		}
-	}
-
+func (p *FreePf) Anchor(anchor string) (Anchor, error) {
 	return nil, fmt.Errorf("no such anchor %q", anchor)
 }
 
 // Queues returns all queues in pf.
-func (p *OpenPf) Queues() ([]Queue, error) {
-	pq := &C.struct_pfioc_queue{}
-	pqs := &C.struct_pfioc_qstats{}
-	hfscstats := &C.struct_hfsc_class_stats{}
-
-	err := ioctl(p.fd.Fd(), DIOCGETQUEUES, uintptr(unsafe.Pointer(pq)))
-	if err != nil {
-		return nil, err
-	}
-
-	queues := make([]Queue, 0)
-
-	n := int(pq.nr)
-
-	for i := 0; i < n; i++ {
-		pqs.nr = C.u_int32_t(i)
-		pqs.ticket = pq.ticket
-		pqs.buf = unsafe.Pointer(hfscstats)
-		pqs.nbytes = C.int(unsafe.Sizeof(C.struct_hfsc_class_stats{}))
-
-		err := ioctl(p.fd.Fd(), DIOCGETQSTATS, uintptr(unsafe.Pointer(pqs)))
-		if err != nil {
-			return nil, err
-		}
-
-		qname := C.GoString(&pqs.queue.qname[0])
-		if qname[0] == '_' {
-			continue
-		}
-
-		qparent := C.GoString(&pqs.queue.parent[0])
-		qifname := C.GoString(&pqs.queue.ifname[0])
-
-		queue := Queue{
-			Name:   qname,
-			Parent: qparent,
-			IfName: qifname,
-			Stats: QueueStats{
-				TransmitPackets: uint64(hfscstats.xmit_cnt.packets),
-				TransmitBytes:   uint64(hfscstats.xmit_cnt.bytes),
-				DroppedPackets:  uint64(hfscstats.drop_cnt.packets),
-				DroppedBytes:    uint64(hfscstats.drop_cnt.bytes),
-			},
-		}
-
-		queues = append(queues, queue)
-	}
-
-	return queues, nil
+func (p *FreePf) Queues() ([]Queue, error) {
+	return nil, fmt.Errorf("queues unimplemented")
 }
 
 // Queue gets a queue by name.
-func (p *OpenPf) Queue(queue string) (*Queue, error) {
+func (p *FreePf) Queue(queue string) (*Queue, error) {
 	if queue == "" {
 		return nil, fmt.Errorf("empty queue name")
 	}
