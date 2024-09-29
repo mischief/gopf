@@ -20,6 +20,7 @@ extern uint16_t chtons(uint16_t v);
 import "C"
 
 import (
+	"fmt"
 	"net"
 	"syscall"
 	"unsafe"
@@ -31,7 +32,11 @@ type OpenAnchor struct {
 	pf *OpenPf
 }
 
-func (a *OpenAnchor) Rules() ([]Rule, error) {
+func (a *OpenAnchor) release(ticket C.u_int32_t) error {
+	return ioctl(a.pf.fd.Fd(), C.DIOCXEND, unsafe.Pointer(&ticket))
+}
+
+func (a *OpenAnchor) Rules() (r []Rule, oerr error) {
 	pr := &C.struct_pfioc_rule{}
 
 	aname := C.CString(a.name)
@@ -43,6 +48,13 @@ func (a *OpenAnchor) Rules() ([]Rule, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	defer func() {
+		if err := a.release(pr.ticket); err != nil {
+			r = nil
+			oerr = err
+		}
+	}()
 
 	count := int(pr.nr)
 
@@ -104,9 +116,13 @@ func (a *OpenAnchor) Rules() ([]Rule, error) {
 			}
 			r.Src.Addr = AddrIPMask{*net}
 		case PF_ADDR_DYNIFTL:
-			r.Src.Addr = AddrDynIf{addrwrapstr(&pr.rule.src.addr, int(pr.rule.af))}
+			ptr := (*C.char)(unsafe.Pointer(&pr.rule.src.addr.v[0]))
+			r.Src.Addr = AddrDynIf{C.GoString(ptr)}
+		case C.PF_ADDR_TABLE:
+			ptr := (*C.char)(unsafe.Pointer(&pr.rule.src.addr.v[0]))
+			r.Src.Addr = AddrTable(C.GoString(ptr))
 		default:
-			panic("bad src")
+			return nil, fmt.Errorf("unhandled src addr type %d", pr.rule.src.addr._type)
 		}
 
 		r.Dst = Target{Port: ntohs((uint16(pr.rule.dst.port[0])))}
@@ -118,10 +134,14 @@ func (a *OpenAnchor) Rules() ([]Rule, error) {
 				panic(err)
 			}
 			r.Dst.Addr = AddrIPMask{*net}
+		case C.PF_ADDR_TABLE:
+			ptr := (*C.char)(unsafe.Pointer(&pr.rule.dst.addr.v[0]))
+			r.Dst.Addr = AddrTable(C.GoString(ptr))
 		case PF_ADDR_DYNIFTL:
-			r.Dst.Addr = AddrDynIf{addrwrapstr(&pr.rule.dst.addr, int(pr.rule.af))}
+			ptr := (*C.char)(unsafe.Pointer(&pr.rule.dst.addr.v[0]))
+			r.Dst.Addr = AddrDynIf{C.GoString(ptr)}
 		default:
-			panic("bad dst")
+			return nil, fmt.Errorf("unhandled dst addr type %d", pr.rule.dst.addr._type)
 		}
 
 		if pr.rule.rdr.addr._type != PF_ADDR_NONE {
