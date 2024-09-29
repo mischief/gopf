@@ -198,8 +198,8 @@ func (a Action) String() string {
 	panic("unknown action")
 }
 
-func ioctl(fd, op, arg uintptr) error {
-	_, _, ep := syscall.Syscall(syscall.SYS_IOCTL, fd, op, arg)
+func ioctl(fd, op uintptr, arg unsafe.Pointer) error {
+	_, _, ep := syscall.Syscall(syscall.SYS_IOCTL, fd, op, uintptr(arg))
 	if ep != 0 {
 		return syscall.Errno(ep)
 	}
@@ -390,7 +390,7 @@ func (s *FreeStats) IfStats() *IfStats {
 func (p *FreePf) Stats() (Stats, error) {
 	stats := C.struct_pf_status{}
 
-	err := ioctl(p.fd.Fd(), DIOCGETSTATUS, uintptr(unsafe.Pointer(&stats)))
+	err := ioctl(p.fd.Fd(), DIOCGETSTATUS, unsafe.Pointer(&stats))
 	if err != nil {
 		return nil, err
 	}
@@ -401,7 +401,7 @@ func (p *FreePf) Stats() (Stats, error) {
 func (p *FreePf) Anchors() ([]string, error) {
 	pr := &C.struct_pfioc_ruleset{}
 
-	err := ioctl(p.fd.Fd(), DIOCGETRULESETS, uintptr(unsafe.Pointer(pr)))
+	err := ioctl(p.fd.Fd(), DIOCGETRULESETS, unsafe.Pointer(pr))
 	if err != nil {
 		return nil, err
 	}
@@ -413,7 +413,7 @@ func (p *FreePf) Anchors() ([]string, error) {
 	for i := 0; i < n; i++ {
 		pr.nr = C.u_int32_t(i)
 
-		err := ioctl(p.fd.Fd(), DIOCGETRULESET, uintptr(unsafe.Pointer(pr)))
+		err := ioctl(p.fd.Fd(), DIOCGETRULESET, unsafe.Pointer(pr))
 		if err != nil {
 			return nil, err
 		}
@@ -453,7 +453,7 @@ func (p *FreePf) qstats(altq *C.struct_pfioc_altq) (*QueueStats, error) {
 		stats.buf = unsafe.Pointer(&st)
 		stats.nbytes = C.int(unsafe.Sizeof(st))
 
-		if err := ioctl(p.fd.Fd(), DIOCGETQSTATS, uintptr(unsafe.Pointer(&stats))); err != nil {
+		if err := ioctl(p.fd.Fd(), DIOCGETQSTATS, unsafe.Pointer(&stats)); err != nil {
 			return nil, err
 		}
 
@@ -471,7 +471,7 @@ func (p *FreePf) qstats(altq *C.struct_pfioc_altq) (*QueueStats, error) {
 		stats.buf = unsafe.Pointer(&st)
 		stats.nbytes = C.int(unsafe.Sizeof(st))
 
-		if err := ioctl(p.fd.Fd(), DIOCGETQSTATS, uintptr(unsafe.Pointer(&stats))); err != nil {
+		if err := ioctl(p.fd.Fd(), DIOCGETQSTATS, unsafe.Pointer(&stats)); err != nil {
 			return nil, err
 		}
 
@@ -489,7 +489,7 @@ func (p *FreePf) qstats(altq *C.struct_pfioc_altq) (*QueueStats, error) {
 		stats.buf = unsafe.Pointer(&st)
 		stats.nbytes = C.sizeof_struct_priq_classstats
 
-		if err := ioctl(p.fd.Fd(), DIOCGETQSTATS, uintptr(unsafe.Pointer(&stats))); err != nil {
+		if err := ioctl(p.fd.Fd(), DIOCGETQSTATS, unsafe.Pointer(&stats)); err != nil {
 			return nil, err
 		}
 
@@ -509,7 +509,7 @@ func (p *FreePf) qstats(altq *C.struct_pfioc_altq) (*QueueStats, error) {
 // Queues returns all queues in pf.
 func (p *FreePf) Queues() ([]Queue, error) {
 	top := C.struct_pfioc_altq{}
-	if err := ioctl(p.fd.Fd(), DIOCGETALTQS, uintptr(unsafe.Pointer(&top))); err != nil {
+	if err := ioctl(p.fd.Fd(), DIOCGETALTQS, unsafe.Pointer(&top)); err != nil {
 		return nil, err
 	}
 
@@ -521,7 +521,7 @@ func (p *FreePf) Queues() ([]Queue, error) {
 		altq.ticket = top.ticket
 		altq.nr = C.u_int32_t(i)
 
-		if err := ioctl(p.fd.Fd(), DIOCGETALTQ, uintptr(unsafe.Pointer(&altq))); err != nil {
+		if err := ioctl(p.fd.Fd(), DIOCGETALTQ, unsafe.Pointer(&altq)); err != nil {
 			return nil, err
 		}
 

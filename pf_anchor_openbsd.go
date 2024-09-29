@@ -39,7 +39,7 @@ func (a *OpenAnchor) Rules() ([]Rule, error) {
 
 	C.strlcpy(&pr.anchor[0], aname, C.size_t(unsafe.Sizeof(pr.anchor)))
 
-	err := ioctl(a.pf.fd.Fd(), DIOCGETRULES, uintptr(unsafe.Pointer(pr)))
+	err := ioctl(a.pf.fd.Fd(), DIOCGETRULES, unsafe.Pointer(pr))
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +50,7 @@ func (a *OpenAnchor) Rules() ([]Rule, error) {
 
 	for i := 0; i < count; i++ {
 		pr.nr = C.u_int32_t(i)
-		err := ioctl(a.pf.fd.Fd(), DIOCGETRULE, uintptr(unsafe.Pointer(pr)))
+		err := ioctl(a.pf.fd.Fd(), DIOCGETRULE, unsafe.Pointer(pr))
 		if err != nil {
 			return nil, err
 		}
@@ -231,7 +231,7 @@ func (a *OpenAnchor) Insert(r *Rule) error {
 
 	rule.action = PF_CHANGE_GET_TICKET
 
-	err := ioctl(a.pf.fd.Fd(), DIOCCHANGERULE, uintptr(unsafe.Pointer(&rule)))
+	err := ioctl(a.pf.fd.Fd(), DIOCCHANGERULE, unsafe.Pointer(&rule))
 	if err != nil {
 		return err
 	}
@@ -239,7 +239,7 @@ func (a *OpenAnchor) Insert(r *Rule) error {
 	rule.action = PF_CHANGE_ADD_TAIL
 
 	// insert rule into anchor
-	err = ioctl(a.pf.fd.Fd(), DIOCCHANGERULE, uintptr(unsafe.Pointer(&rule)))
+	err = ioctl(a.pf.fd.Fd(), DIOCCHANGERULE, unsafe.Pointer(&rule))
 	if err != nil {
 		return err
 	}
@@ -257,14 +257,14 @@ func (a *OpenAnchor) DeleteIndex(nr int) error {
 	C.strlcpy(&rule.anchor[0], aname, C.size_t(unsafe.Sizeof(rule.anchor)))
 	C.free(unsafe.Pointer(aname))
 
-	err := ioctl(a.pf.fd.Fd(), DIOCCHANGERULE, uintptr(unsafe.Pointer(&rule)))
+	err := ioctl(a.pf.fd.Fd(), DIOCCHANGERULE, unsafe.Pointer(&rule))
 	if err != nil {
 		return err
 	}
 
 	rule.action = PF_CHANGE_REMOVE
 
-	err = ioctl(a.pf.fd.Fd(), DIOCCHANGERULE, uintptr(unsafe.Pointer(&rule)))
+	err = ioctl(a.pf.fd.Fd(), DIOCCHANGERULE, unsafe.Pointer(&rule))
 	if err != nil {
 		return err
 	}

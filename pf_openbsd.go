@@ -204,8 +204,8 @@ func (a Action) String() string {
 	panic("unknown action")
 }
 
-func ioctl(fd, op, arg uintptr) error {
-	_, _, ep := syscall.Syscall(syscall.SYS_IOCTL, fd, op, arg)
+func ioctl(fd, op uintptr, arg unsafe.Pointer) error {
+	_, _, ep := syscall.Syscall(syscall.SYS_IOCTL, fd, op, uintptr(arg))
 	if ep != 0 {
 		return syscall.Errno(ep)
 	}
@@ -396,7 +396,7 @@ func (s *OpenStats) IfStats() *IfStats {
 func (p *OpenPf) Stats() (Stats, error) {
 	stats := C.struct_pf_status{}
 
-	err := ioctl(p.fd.Fd(), DIOCGETSTATUS, uintptr(unsafe.Pointer(&stats)))
+	err := ioctl(p.fd.Fd(), DIOCGETSTATUS, unsafe.Pointer(&stats))
 	if err != nil {
 		return nil, err
 	}
@@ -407,7 +407,7 @@ func (p *OpenPf) Stats() (Stats, error) {
 func (p *OpenPf) Anchors() ([]string, error) {
 	pr := &C.struct_pfioc_ruleset{}
 
-	err := ioctl(p.fd.Fd(), DIOCGETRULESETS, uintptr(unsafe.Pointer(pr)))
+	err := ioctl(p.fd.Fd(), DIOCGETRULESETS, unsafe.Pointer(pr))
 	if err != nil {
 		return nil, err
 	}
@@ -419,7 +419,7 @@ func (p *OpenPf) Anchors() ([]string, error) {
 	for i := 0; i < n; i++ {
 		pr.nr = C.u_int32_t(i)
 
-		err := ioctl(p.fd.Fd(), DIOCGETRULESET, uintptr(unsafe.Pointer(pr)))
+		err := ioctl(p.fd.Fd(), DIOCGETRULESET, unsafe.Pointer(pr))
 		if err != nil {
 			return nil, err
 		}
@@ -470,7 +470,7 @@ func (p *OpenPf) Queues() ([]Queue, error) {
 	pqs := &C.struct_pfioc_qstats{}
 	hfscstats := &C.struct_hfsc_class_stats{}
 
-	err := ioctl(p.fd.Fd(), DIOCGETQUEUES, uintptr(unsafe.Pointer(pq)))
+	err := ioctl(p.fd.Fd(), DIOCGETQUEUES, unsafe.Pointer(pq))
 	if err != nil {
 		return nil, err
 	}
@@ -485,7 +485,7 @@ func (p *OpenPf) Queues() ([]Queue, error) {
 		pqs.buf = unsafe.Pointer(hfscstats)
 		pqs.nbytes = C.int(unsafe.Sizeof(C.struct_hfsc_class_stats{}))
 
-		err := ioctl(p.fd.Fd(), DIOCGETQSTATS, uintptr(unsafe.Pointer(pqs)))
+		err := ioctl(p.fd.Fd(), DIOCGETQSTATS, unsafe.Pointer(pqs))
 		if err != nil {
 			return nil, err
 		}
