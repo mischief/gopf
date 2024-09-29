@@ -191,10 +191,6 @@ var (
 	}
 )
 
-const (
-	Match = PF_MATCH
-)
-
 func (a Action) String() string {
 	switch a {
 	case Block:
