@@ -173,7 +173,6 @@ const (
 	PF_ADDR_ADDRMASK = C.PF_ADDR_ADDRMASK
 	PF_ADDR_DYNIFTL  = C.PF_ADDR_DYNIFTL
 	PF_ADDR_TABLE    = C.PF_ADDR_TABLE
-	PF_ADDR_NONE     = C.PF_ADDR_NONE
 
 	/* keep state types */
 	PF_STATE_NORMAL = C.PF_STATE_NORMAL
@@ -626,9 +625,39 @@ func (a *FreeAnchor) RuleStats() ([]RuleStats, error) {
 			direction = dirtypes[ir.rule.direction]
 		}
 
+		af := ""
+		switch int(ir.rule.af) {
+		case syscall.AF_INET:
+			af = "inet"
+		case syscall.AF_INET6:
+			af = "inet6"
+		}
+
+		proto := ""
+		switch int(ir.rule.proto) {
+		case syscall.IPPROTO_ICMP:
+			proto = "icmp"
+		case syscall.IPPROTO_TCP:
+			proto = "tcp"
+		case syscall.IPPROTO_UDP:
+			proto = "udp"
+		case syscall.IPPROTO_ESP:
+			proto = "esp"
+		case syscall.IPPROTO_AH:
+			proto = "ah"
+		case syscall.IPPROTO_ICMPV6:
+			proto = "icmp6"
+		default:
+			if ir.rule.proto != 0 {
+				proto = fmt.Sprintf("%d", ir.rule.proto)
+			}
+		}
+
 		rules = append(rules, RuleStats{
 			Label:       label,
 			Nr:          uint32(ir.rule.nr),
+			AF:          af,
+			Proto:       proto,
 			Anchor:      a.name,
 			Interface:   C.GoString(&ir.rule.ifname[0]),
 			Action:      action,

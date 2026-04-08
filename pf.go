@@ -169,6 +169,8 @@ type Anchor interface {
 type RuleStats struct {
 	Label       string
 	Nr          uint32
+	AF          string
+	Proto       string
 	Anchor      string
 	Interface   string
 	Action      string
