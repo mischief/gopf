@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	"os"
+	"strings"
 
-	"github.com/mischief/gopf"
+	pf "github.com/mischief/gopf"
 )
 
 const exUsage = 64
@@ -48,9 +48,36 @@ func queues(handle pf.Pf) error {
 	return nil
 }
 
+func rules(handle pf.Pf) error {
+	anchors, err := handle.Anchors()
+	if err != nil {
+		return err
+	}
+
+	for _, a := range append([]string{""}, anchors...) {
+		fmt.Printf("Anchor %q\n", a)
+		anchor, err := handle.Anchor(a)
+		if err != nil {
+			return err
+		}
+
+		rs, err := anchor.RuleStats()
+		if err != nil {
+			return err
+		}
+
+		for _, v := range rs {
+			fmt.Printf("%+v\n", v)
+		}
+	}
+
+	return nil
+}
+
 var subc = map[string]func(pf.Pf) error{
 	"stats":  stats,
 	"queues": queues,
+	"rules":  rules,
 }
 
 func fatal(exc int, err error) {
