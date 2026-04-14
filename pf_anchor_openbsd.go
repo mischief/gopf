@@ -48,7 +48,9 @@ func (a *OpenAnchor) Rules() (r []Rule, oerr error) {
 	aname := C.CString(a.name)
 	defer C.free(unsafe.Pointer(aname))
 
-	C.strlcpy(&pr.anchor[0], aname, C.size_t(unsafe.Sizeof(pr.anchor)))
+	if n := C.strlcpy(&pr.anchor[0], aname, C.size_t(unsafe.Sizeof(pr.anchor))); n >= C.size_t(unsafe.Sizeof(pr.anchor)) {
+		return nil, fmt.Errorf("anchor name too long")
+	}
 
 	if err := ioctl(a.pf.fd.Fd(), DIOCGETRULES, unsafe.Pointer(pr)); err != nil {
 		return nil, err
@@ -168,8 +170,10 @@ func (a *OpenAnchor) Insert(r *Rule) error {
 	rule := C.struct_pfioc_rule{}
 
 	aname := C.CString(a.name)
-	C.strlcpy(&rule.anchor[0], aname, C.size_t(unsafe.Sizeof(rule.anchor)))
-	C.free(unsafe.Pointer(aname))
+	defer C.free(unsafe.Pointer(aname))
+	if n := C.strlcpy(&rule.anchor[0], aname, C.size_t(unsafe.Sizeof(rule.anchor))); n >= C.size_t(unsafe.Sizeof(rule.anchor)) {
+		return fmt.Errorf("anchor name too long")
+	}
 
 	nr := &rule.rule
 
@@ -214,12 +218,16 @@ func (a *OpenAnchor) Insert(r *Rule) error {
 	ifname := C.CString(r.Interface)
 	defer C.free(unsafe.Pointer(ifname))
 
-	C.strlcpy(&nr.ifname[0], ifname, C.size_t(unsafe.Sizeof(nr.ifname)))
+	if n := C.strlcpy(&nr.ifname[0], ifname, C.size_t(unsafe.Sizeof(nr.ifname))); n >= C.size_t(unsafe.Sizeof(nr.ifname)) {
+		return fmt.Errorf("interface name too long")
+	}
 
 	tagname := C.CString(r.Tag)
 	defer C.free(unsafe.Pointer(tagname))
 
-	C.strlcpy(&nr.tagname[0], tagname, C.size_t(unsafe.Sizeof(nr.tagname)))
+	if n := C.strlcpy(&nr.tagname[0], tagname, C.size_t(unsafe.Sizeof(nr.tagname))); n >= C.size_t(unsafe.Sizeof(nr.tagname)) {
+		return fmt.Errorf("tag name too long")
+	}
 
 	if r.Src.Addr != nil {
 		goaddrtopfaddr(r.Src.Addr, &nr.src.addr)
@@ -273,8 +281,10 @@ func (a *OpenAnchor) DeleteIndex(nr int) error {
 	}
 
 	aname := C.CString(a.name)
-	C.strlcpy(&rule.anchor[0], aname, C.size_t(unsafe.Sizeof(rule.anchor)))
-	C.free(unsafe.Pointer(aname))
+	defer C.free(unsafe.Pointer(aname))
+	if n := C.strlcpy(&rule.anchor[0], aname, C.size_t(unsafe.Sizeof(rule.anchor))); n >= C.size_t(unsafe.Sizeof(rule.anchor)) {
+		return fmt.Errorf("anchor name too long")
+	}
 
 	err := ioctl(a.pf.fd.Fd(), DIOCCHANGERULE, unsafe.Pointer(&rule))
 	if err != nil {
@@ -297,7 +307,9 @@ func (a *OpenAnchor) RuleStats() (r []RuleStats, oerr error) {
 
 	aname := C.CString(a.name)
 	defer C.free(unsafe.Pointer(aname))
-	C.strlcpy(&pr.anchor[0], aname, C.size_t(unsafe.Sizeof(pr.anchor)))
+	if n := C.strlcpy(&pr.anchor[0], aname, C.size_t(unsafe.Sizeof(pr.anchor))); n >= C.size_t(unsafe.Sizeof(pr.anchor)) {
+		return nil, fmt.Errorf("anchor name too long")
+	}
 
 	if err := ioctl(a.pf.fd.Fd(), DIOCGETRULES, unsafe.Pointer(pr)); err != nil {
 		return nil, err
@@ -314,7 +326,9 @@ func (a *OpenAnchor) RuleStats() (r []RuleStats, oerr error) {
 
 	for i := 0; i < count; i++ {
 		ir := &C.struct_pfioc_rule{}
-		C.strlcpy(&ir.anchor[0], aname, C.size_t(unsafe.Sizeof(ir.anchor)))
+		if n := C.strlcpy(&ir.anchor[0], aname, C.size_t(unsafe.Sizeof(ir.anchor))); n >= C.size_t(unsafe.Sizeof(ir.anchor)) {
+			return nil, fmt.Errorf("anchor name too long")
+		}
 		ir.ticket = pr.ticket
 		ir.nr = C.u_int32_t(i)
 
