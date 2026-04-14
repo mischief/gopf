@@ -406,14 +406,26 @@ func (p *OpenPf) Stats() (Stats, error) {
 }
 
 func (p *OpenPf) Anchors() ([]string, error) {
+	return p.anchorsUnder("")
+}
+
+func (p *OpenPf) anchorsUnder(path string) ([]string, error) {
 	pr := &C.struct_pfioc_ruleset{}
+
+	if path != "" {
+		cpath := C.CString(path)
+		defer C.free(unsafe.Pointer(cpath))
+		if n := C.strlcpy(&pr.path[0], cpath, C.size_t(unsafe.Sizeof(pr.path))); n >= C.size_t(unsafe.Sizeof(pr.path)) {
+			return nil, fmt.Errorf("path too long")
+		}
+	}
 
 	err := ioctl(p.fd.Fd(), DIOCGETRULESETS, unsafe.Pointer(pr))
 	if err != nil {
 		return nil, err
 	}
 
-	anchors := make([]string, 0)
+	var anchors []string
 
 	n := int(pr.nr)
 
@@ -425,21 +437,26 @@ func (p *OpenPf) Anchors() ([]string, error) {
 			return nil, err
 		}
 
-		anchor := ""
-
-		if pr.path[0] != '\x00' {
-			anchor += C.GoString(&pr.path[0]) + "/"
-		}
-
 		name := C.GoString(&pr.name[0])
 
 		if name == PF_RESERVED_ANCHOR {
 			continue
 		}
 
-		anchor += name
+		fullpath := ""
+		if pr.path[0] != '\x00' {
+			fullpath = C.GoString(&pr.path[0]) + "/"
+		}
+		fullpath += name
 
-		anchors = append(anchors, anchor)
+		anchors = append(anchors, fullpath)
+
+		// Recurse into sub-anchors.
+		sub, err := p.anchorsUnder(fullpath)
+		if err != nil {
+			return nil, err
+		}
+		anchors = append(anchors, sub...)
 	}
 
 	return anchors, nil
