@@ -224,6 +224,8 @@ const (
 	DIOCXCOMMIT     = C.DIOCXCOMMIT
 	DIOCCHANGERULE  = C.DIOCCHANGERULE
 	DIOCGETQSTATS   = C.DIOCGETQSTATS
+	DIOCBEGINADDRS  = C.DIOCBEGINADDRS
+	DIOCADDADDR     = C.DIOCADDADDR
 
 	/* DIOCCHANGERULE actions */
 	PF_CHANGE_ADD_TAIL   = C.PF_CHANGE_ADD_TAIL
@@ -674,11 +676,146 @@ func (a *FreeAnchor) Rules() ([]Rule, error) {
 }
 
 func (a *FreeAnchor) Insert(r *Rule) error {
-	return fmt.Errorf("Insert not yet implemented for FreeBSD")
+	rule := C.struct_pfioc_rule{}
+
+	aname := C.CString(a.name)
+	defer C.free(unsafe.Pointer(aname))
+	if n := C.strlcpy(&rule.anchor[0], aname, C.size_t(unsafe.Sizeof(rule.anchor))); n >= C.size_t(unsafe.Sizeof(rule.anchor)) {
+		return fmt.Errorf("anchor name too long")
+	}
+
+	nr := &rule.rule
+
+	nr.af = syscall.AF_INET
+	nr.rtableid = C.int(-1)
+	nr.keep_state = PF_STATE_NORMAL
+	nr.flags = 0x2
+	nr.flagset = 0x12
+	nr.src.addr._type = PF_ADDR_ADDRMASK
+	nr.dst.addr._type = PF_ADDR_ADDRMASK
+
+	switch r.Action {
+	case Block:
+		nr.action = PF_BLOCK
+	case Pass:
+		nr.action = PF_PASS
+	case Match:
+		nr.action = PF_MATCH
+	}
+
+	switch r.Direction {
+	case InOut:
+		nr.direction = PF_INOUT
+	case In:
+		nr.direction = PF_IN
+	case Out:
+		nr.direction = PF_OUT
+	}
+
+	if r.Log {
+		nr.log = C.u_int8_t(1)
+	}
+
+	if r.Quick {
+		nr.quick = C.u_int8_t(1)
+	}
+
+	ifname := C.CString(r.Interface)
+	defer C.free(unsafe.Pointer(ifname))
+
+	if n := C.strlcpy(&nr.ifname[0], ifname, C.size_t(unsafe.Sizeof(nr.ifname))); n >= C.size_t(unsafe.Sizeof(nr.ifname)) {
+		return fmt.Errorf("interface name too long")
+	}
+
+	tagname := C.CString(r.Tag)
+	defer C.free(unsafe.Pointer(tagname))
+
+	if n := C.strlcpy(&nr.tagname[0], tagname, C.size_t(unsafe.Sizeof(nr.tagname))); n >= C.size_t(unsafe.Sizeof(nr.tagname)) {
+		return fmt.Errorf("tag name too long")
+	}
+
+	if r.Src.Addr != nil {
+		goaddrtopfaddr(r.Src.Addr, &nr.src.addr)
+	}
+	if r.Src.Port != 0 {
+		nr.src.port_op = PF_OP_EQ
+		nr.src.port[0] = C.u_int16_t(C.chtons(C.uint16_t(r.Src.Port)))
+	}
+
+	if r.Dst.Addr != nil {
+		goaddrtopfaddr(r.Dst.Addr, &nr.dst.addr)
+	}
+	if r.Dst.Port != 0 {
+		nr.dst.port_op = PF_OP_EQ
+		nr.dst.port[0] = C.u_int16_t(C.chtons(C.uint16_t(r.Dst.Port)))
+	}
+
+	// Every rule carries a pool ticket, whether or not it redirects.
+	ticket, err := a.addPoolAddr(r.Rdr)
+	if err != nil {
+		return err
+	}
+
+	rule.pool_ticket = ticket
+
+	if r.Rdr != nil && r.Rdr.Port != 0 {
+		nr.rpool.proxy_port[0] = C.u_int16_t(r.Rdr.Port)
+		nr.rpool.proxy_port[1] = C.u_int16_t(r.Rdr.Port)
+	}
+
+	rule.action = PF_CHANGE_GET_TICKET
+
+	if err = ioctl(a.pf.fd.Fd(), DIOCCHANGERULE, unsafe.Pointer(&rule)); err != nil {
+		return err
+	}
+
+	rule.action = PF_CHANGE_ADD_TAIL
+
+	return ioctl(a.pf.fd.Fd(), DIOCCHANGERULE, unsafe.Pointer(&rule))
+}
+
+// addPoolAddr opens a redirection pool and stages its address, if any. The
+// kernel wants the ticket it returns on every rule insert.
+func (a *FreeAnchor) addPoolAddr(t *Target) (C.u_int32_t, error) {
+	pp := C.struct_pfioc_pooladdr{}
+
+	if err := ioctl(a.pf.fd.Fd(), DIOCBEGINADDRS, unsafe.Pointer(&pp)); err != nil {
+		return 0, err
+	}
+
+	if t == nil || t.Addr == nil {
+		return pp.ticket, nil
+	}
+
+	pp.af = syscall.AF_INET
+	goaddrtopfaddr(t.Addr, &pp.addr.addr)
+
+	if err := ioctl(a.pf.fd.Fd(), DIOCADDADDR, unsafe.Pointer(&pp)); err != nil {
+		return 0, err
+	}
+
+	return pp.ticket, nil
 }
 
 func (a *FreeAnchor) DeleteIndex(nr int) error {
-	return fmt.Errorf("DeleteIndex not yet implemented for FreeBSD")
+	rule := C.struct_pfioc_rule{
+		action: PF_CHANGE_GET_TICKET,
+		nr:     C.u_int32_t(nr),
+	}
+
+	aname := C.CString(a.name)
+	defer C.free(unsafe.Pointer(aname))
+	if n := C.strlcpy(&rule.anchor[0], aname, C.size_t(unsafe.Sizeof(rule.anchor))); n >= C.size_t(unsafe.Sizeof(rule.anchor)) {
+		return fmt.Errorf("anchor name too long")
+	}
+
+	if err := ioctl(a.pf.fd.Fd(), DIOCCHANGERULE, unsafe.Pointer(&rule)); err != nil {
+		return err
+	}
+
+	rule.action = PF_CHANGE_REMOVE
+
+	return ioctl(a.pf.fd.Fd(), DIOCCHANGERULE, unsafe.Pointer(&rule))
 }
 
 // RuleStats returns per-rule evaluation and traffic counters for this anchor.
