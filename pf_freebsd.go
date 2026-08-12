@@ -1,6 +1,7 @@
 package pf
 
 /*
+#cgo LDFLAGS: -lnv
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -12,9 +13,22 @@ package pf
 #include <net/altq/altq_cbq.h>
 #include <net/altq/altq_hfsc.h>
 #include <net/altq/altq_priq.h>
+#include <sys/param.h>
 #include <net/pfvar.h>
+
+#include <sys/nv.h>
+
+// FreeBSD 15 dropped the struct-based rule ioctl. Keep the constant defined so
+// the legacy rule paths still compile; they refuse to run when it is absent.
+#ifndef DIOCGETRULE
+#define DIOCGETRULE 0
+#define GOPF_NO_RULE_IOCTL 1
+#else
+#define GOPF_NO_RULE_IOCTL 0
+#endif
 #include <arpa/inet.h>
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -125,9 +139,70 @@ chtons(uint16_t v){
 	return htons(v);
 }
 
+// Fills the classic struct from the nvlist status ioctl, the only one FreeBSD
+// 14 and later answer.
+int
+gopf_getstatus(int fd, struct pf_status *st)
+{
+	struct pfioc_nv nv;
+	nvlist_t *l;
+	const nvlist_t *f;
+	const uint64_t *c, *p, *b;
+	const char *ifname;
+	size_t n, i;
+	int rv = -1;
+
+	memset(st, 0, sizeof(*st));
+
+	nv.size = 65536;
+	nv.len = 0;
+	nv.data = malloc(nv.size);
+	if (nv.data == NULL)
+		return -1;
+
+	if (ioctl(fd, DIOCGETSTATUSNV, &nv) < 0)
+		goto done;
+
+	l = nvlist_unpack(nv.data, nv.len, 0);
+	if (l == NULL) {
+		errno = EINVAL;
+		goto done;
+	}
+
+	st->running = nvlist_get_bool(l, "running");
+	st->states = nvlist_get_number(l, "states");
+	st->src_nodes = nvlist_get_number(l, "src_nodes");
+	st->since = nvlist_get_number(l, "since");
+	st->debug = nvlist_get_number(l, "debug");
+	st->hostid = nvlist_get_number(l, "hostid");
+
+	ifname = nvlist_get_string(l, "ifname");
+	strlcpy(st->ifname, ifname, sizeof(st->ifname));
+
+	f = nvlist_get_nvlist(l, "fcounters");
+	c = nvlist_get_number_array(f, "counters", &n);
+	for (i = 0; i < n && i < FCNT_MAX; i++)
+		st->fcounters[i] = c[i];
+
+	p = nvlist_get_number_array(l, "pcounters", &n);
+	for (i = 0; i < n && i < 8; i++)
+		st->pcounters[i / 4][(i / 2) % 2][i % 2] = p[i];
+
+	b = nvlist_get_number_array(l, "bcounters", &n);
+	for (i = 0; i < n && i < 4; i++)
+		st->bcounters[i / 2][i % 2] = b[i];
+
+	nvlist_destroy(l);
+	rv = 0;
+done:
+	free(nv.data);
+	return rv;
+}
+
 */
 import "C"
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -144,7 +219,6 @@ const (
 	DIOCGETRULES    = C.DIOCGETRULES
 	DIOCGETALTQ     = C.DIOCGETALTQ
 	DIOCGETRULE     = C.DIOCGETRULE
-	DIOCGETSTATUS   = C.DIOCGETSTATUS
 	DIOCGETRULESETS = C.DIOCGETRULESETS
 	DIOCGETRULESET  = C.DIOCGETRULESET
 	DIOCXBEGIN      = C.DIOCXBEGIN
@@ -167,7 +241,7 @@ const (
 	PF_BLOCK = C.PF_DROP
 	PF_MATCH = C.PF_MATCH
 	PF_RDR   = C.PF_RDR
-	Match     = PF_MATCH
+	Match    = PF_MATCH
 
 	/* address types */
 	PF_ADDR_ADDRMASK = C.PF_ADDR_ADDRMASK
@@ -399,8 +473,7 @@ func (s *FreeStats) IfStats() *IfStats {
 func (p *FreePf) Stats() (Stats, error) {
 	stats := C.struct_pf_status{}
 
-	err := ioctl(p.fd.Fd(), DIOCGETSTATUS, unsafe.Pointer(&stats))
-	if err != nil {
+	if rv, err := C.gopf_getstatus(C.int(p.fd.Fd()), &stats); rv != 0 {
 		return nil, err
 	}
 
@@ -488,7 +561,16 @@ type FreeAnchor struct {
 	pf   *FreePf
 }
 
+// FreeBSD 15 serves rules over netlink only, which is not implemented here.
+const nvEra = C.GOPF_NO_RULE_IOCTL != 0
+
+var errRuleIoctl = errors.New("pf: rule ioctls unsupported on this kernel; needs netlink")
+
 func (a *FreeAnchor) Rules() ([]Rule, error) {
+	if nvEra {
+		return nil, errRuleIoctl
+	}
+
 	pr := &C.struct_pfioc_rule{}
 
 	aname := C.CString(a.name)
@@ -604,6 +686,10 @@ func (a *FreeAnchor) DeleteIndex(nr int) error {
 
 // RuleStats returns per-rule evaluation and traffic counters for this anchor.
 func (a *FreeAnchor) RuleStats() ([]RuleStats, error) {
+	if nvEra {
+		return nil, errRuleIoctl
+	}
+
 	pr := &C.struct_pfioc_rule{}
 
 	aname := C.CString(a.name)
