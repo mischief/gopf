@@ -237,5 +237,6 @@ type Pf interface {
 	Anchors() ([]string, error)
 	Anchor(anchor string) (Anchor, error)
 	Queues() ([]Queue, error)
+	Tables() ([]TableStats, error)
 	Close() error
 }
