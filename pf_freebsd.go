@@ -687,7 +687,7 @@ func (a *FreeAnchor) DeleteIndex(nr int) error {
 // RuleStats returns per-rule evaluation and traffic counters for this anchor.
 func (a *FreeAnchor) RuleStats() ([]RuleStats, error) {
 	if nvEra {
-		return nil, errRuleIoctl
+		return ruleStatsNetlink(a.name)
 	}
 
 	pr := &C.struct_pfioc_rule{}
