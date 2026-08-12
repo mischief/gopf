@@ -202,7 +202,6 @@ done:
 */
 import "C"
 import (
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -564,11 +563,9 @@ type FreeAnchor struct {
 // FreeBSD 15 serves rules over netlink only, which is not implemented here.
 const nvEra = C.GOPF_NO_RULE_IOCTL != 0
 
-var errRuleIoctl = errors.New("pf: rule ioctls unsupported on this kernel; needs netlink")
-
 func (a *FreeAnchor) Rules() ([]Rule, error) {
 	if nvEra {
-		return nil, errRuleIoctl
+		return rulesNetlink(a.name)
 	}
 
 	pr := &C.struct_pfioc_rule{}
